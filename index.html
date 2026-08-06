@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hand Landmarker</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; height: 100vh; overflow: hidden; }
+
+    #wrap {
+      position: fixed; inset: 0;
+      display: grid; place-items: center;
+    }
+    video, canvas {
+      grid-area: 1 / 1;
+      width: 100%; height: 100%;
+      object-fit: contain;
+      transform: rotateY(180deg);
+    }
+    canvas { z-index: 2; pointer-events: none; }
+
+    #start {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #start.hidden { display: none; }
+    #start button {
+      background: #007f8b; color: #fff; border: none;
+      padding: 16px 40px; border-radius: 30px;
+      font-size: 1.2rem; cursor: pointer;
+      font-family: inherit;
+    }
+    #start button:disabled { background: #555; cursor: not-allowed; }
+
+    #stats {
+      position: fixed; bottom: 16px; right: 24px; z-index: 20;
+      font-family: 'Roboto Mono', monospace; font-size: 0.85rem;
+      color: rgba(255,255,255,0.5);
+      display: flex; gap: 18px;
+    }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="output"></canvas>
+  </div>
+  <div id="start"><button id="btn">📷 开启摄像头</button></div>
+  <div id="stats">
+    <span id="fps">FPS: -</span>
+    <span id="lat">延迟: -</span>
+    <span id="frames">帧数: 0</span>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
