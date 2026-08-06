@@ -74,12 +74,16 @@ function wsConnect() {
     ws.onopen = () => {
       wsBtnEl.textContent = '🟢';
       wsBtnEl.className = 'connected';
-      console.log(`WS connected: ${url}`);
+      const mode = getMode();
+      console.log(`%c🔗 WS connected %c${url}`,
+        'color:#22c55e;font-weight:bold', 'color:#94a3b8');
+      console.log(`   Mode: ${mode} | Sabers: 2 | Payload: 48 bytes (12×float32 LE)`);
     };
     ws.onclose = () => {
       wsBtnEl.textContent = '🔗';
       wsBtnEl.className = '';
       ws = null;
+      console.log('%c🔌 WS disconnected', 'color:#ef4444');
     };
     ws.onerror = () => {
       wsBtnEl.textContent = '🔴';
@@ -152,6 +156,7 @@ function extractLightsabers(result: any): {hilt:number[]; tip:number[]}[] {
 function vecAdd(a: number[], b: number[]): number[] { return [a[0]+b[0], a[1]+b[1], a[2]+b[2]]; }
 function vecMul(a: number[], s: number): number[] { return [a[0]*s, a[1]*s, a[2]*s]; }
 
+let lastWsLog = 0;
 function sendWsMotion(result: any) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   const sabers = extractLightsabers(result);
@@ -166,6 +171,23 @@ function sendWsMotion(result: any) {
     payload,
   });
   ws.send(wire.buffer);
+
+  // 控制台日志: 每 30 帧打印一次
+  if (frameCount - lastWsLog >= 30) {
+    lastWsLog = frameCount;
+    const mode = getMode() === 'hand' ? 'Hands' : 'Body';
+    console.log(`%c⚔️ WS sent #${wsSeq} %c${mode} %c| 72 bytes`,
+      'color:#fbbf24;font-weight:bold', 'color:#94a3b8', 'color:#64748b');
+    sabers.forEach((s, i) => {
+      const side = i === 0 ? 'L' : 'R';
+      const active = s.hilt[0] !== 0 || s.hilt[1] !== 0 || s.hilt[2] !== 0;
+      if (active) {
+        console.log(`  ${side}:  hilt(${s.hilt.map(v=>v.toFixed(3)).join(',')})  tip(${s.tip.map(v=>v.toFixed(3)).join(',')})`);
+      } else {
+        console.log(`  ${side}:  %c(empty)`, 'color:#666');
+      }
+    });
+  }
 }
 
 // 双手 / 身体 (从 radio 读取)
