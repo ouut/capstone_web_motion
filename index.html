@@ -63,6 +63,28 @@
     #start button:hover { background: #006069; }
     #start button:disabled { background: #555; cursor: not-allowed; }
 
+    /* WS 连接面板 */
+    .ws-panel {
+      display: flex; gap: 8px; width: 100%;
+    }
+    .ws-panel input {
+      flex: 1; min-width: 0;
+      padding: 8px 10px; border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.06);
+      color: #fff; font-size: 0.85rem; font-family: inherit;
+      outline: none;
+    }
+    .ws-panel input:focus { border-color: #007f8b; }
+    .ws-panel input::placeholder { color: rgba(255,255,255,0.3); }
+    #ws-btn {
+      padding: 8px 16px; border-radius: 8px; border: none;
+      background: #334155; color: #e2e8f0; font-size: 0.85rem;
+      cursor: pointer; font-family: inherit; white-space: nowrap;
+    }
+    #ws-btn.connected { background: #16a34a; }
+    #ws-btn.error { background: #dc2626; }
+
     #stats {
       position: fixed; bottom: 16px; right: 24px; z-index: 20;
       font-family: 'Roboto Mono', monospace; font-size: 0.85rem;
@@ -84,6 +106,12 @@
         <input type="radio" id="r-pose" name="mode" value="pose">
         <label for="r-pose">🧍 Body</label>
       </div>
+      <div class="ws-panel" id="ws-panel">
+        <input id="ws-user" placeholder="User (≤8 ASCII)" maxlength="8" autocomplete="off" />
+        <input id="ws-room" placeholder="Room (≤6 ASCII)" maxlength="6" autocomplete="off" />
+        <input id="ws-host" placeholder="host:8080" autocomplete="off" />
+        <button id="ws-btn">🔗</button>
+      </div>
       <button id="btn">📷 Start Camera</button>
     </div>
   </div>
@@ -92,6 +120,7 @@
     <span id="lat">Latency: -</span>
     <span id="frames">Frames: 0</span>
   </div>
+  <script src="/gateway_protocol.js"></script>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

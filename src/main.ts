@@ -1,10 +1,144 @@
 import { DrawingUtils, HandLandmarker, PoseLandmarker } from '@mediapipe/tasks-vision';
 
+declare const gatewayProtocol: {
+  PKT_RAW_MOTION: number;
+  PKT_AI_EVENT: number;
+  PKT_SYSTEM_CMD: number;
+  PKT_HEARTBEAT: number;
+  TGT_BROADCAST: number;
+  TGT_UNICAST: number;
+  encode: (o: any) => Uint8Array;
+  decode: (b: Uint8Array|ArrayBuffer) => any;
+};
+
 const video  = document.getElementById('webcam') as HTMLVideoElement;
 const canvas = document.getElementById('output') as HTMLCanvasElement;
 const ctx    = canvas.getContext('2d')!;
 const btn    = document.getElementById('btn') as HTMLButtonElement;
 const startDiv = document.getElementById('start')!;
+
+// ══════════════════════════════════════════════════════════
+// WebSocket
+// ══════════════════════════════════════════════════════════
+
+const wsUserEl = document.getElementById('ws-user') as HTMLInputElement;
+const wsRoomEl = document.getElementById('ws-room') as HTMLInputElement;
+const wsHostEl = document.getElementById('ws-host') as HTMLInputElement;
+const wsBtnEl  = document.getElementById('ws-btn') as HTMLButtonElement;
+
+let ws: WebSocket | null = null;
+let wsSeq = 0;
+
+// 正则验证: user ≤ 8 ASCII, room ≤ 6 ASCII, host = domain:port 或 ip:port
+const RE_ASCII = /^[\x21-\x7E]{1,8}$/;   // user
+const RE_ROOM  = /^[\x21-\x7E]{1,6}$/;   // room
+const RE_HOST  = /^[\w.-]+:\d{2,5}$/;     // host:port
+
+function validateWsInputs(): string | null {
+  const u = wsUserEl.value.trim();
+  const r = wsRoomEl.value.trim();
+  const h = wsHostEl.value.trim();
+  if (!u || !RE_ASCII.test(u)) return 'User: 1-8 ASCII chars required';
+  if (!r || !RE_ROOM.test(r)) return 'Room: 1-6 ASCII chars required';
+  if (!h || !RE_HOST.test(h)) return 'Host: e.g. 192.168.1.1:8080 or example.com:8080';
+  return null;
+}
+
+function wsConnect() {
+  if (ws) { ws.close(); ws = null; }
+
+  const err = validateWsInputs();
+  if (err) { alert(err); return; }
+
+  const u = wsUserEl.value.trim();
+  const r = wsRoomEl.value.trim();
+  const h = wsHostEl.value.trim();
+
+  const url = `ws://${h}/ws?room=${encodeURIComponent(r)}&user=${encodeURIComponent(u)}`;
+
+  try {
+    ws = new WebSocket(url);
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = () => {
+      wsBtnEl.textContent = '🟢';
+      wsBtnEl.className = 'connected';
+      console.log(`WS connected: ${url}`);
+    };
+    ws.onclose = () => {
+      wsBtnEl.textContent = '🔗';
+      wsBtnEl.className = '';
+      ws = null;
+    };
+    ws.onerror = () => {
+      wsBtnEl.textContent = '🔴';
+      wsBtnEl.className = 'error';
+    };
+  } catch (e: any) {
+    alert('WebSocket error: ' + e.message);
+  }
+}
+
+wsBtnEl.addEventListener('click', () => {
+  if (ws) { ws.close(); ws = null; }
+  else wsConnect();
+});
+
+// 打包 12 个 float32 → 48 bytes 的 payload
+function packMotion(pts: {x:number;y:number;z:number}[]): Uint8Array {
+  const buf = new ArrayBuffer(48);
+  const dv = new DataView(buf);
+  for (let i = 0; i < 4; i++) {
+    const p = pts[i] || { x:0, y:0, z:0 };
+    dv.setFloat32(i*12 + 0, p.x, true);  // little-endian
+    dv.setFloat32(i*12 + 4, p.y, true);
+    dv.setFloat32(i*12 + 8, p.z, true);
+  }
+  return new Uint8Array(buf);
+}
+
+// 从检测结果提取要发送的 4 个点
+function extractWsPoints(result: any): {x:number;y:number;z:number}[] {
+  if (getMode() === 'hand') {
+    // Hands: 左腕,左食指尖,右腕,右食指尖
+    const pts: {x:number;y:number;z:number}[] = [];
+    for (let hi = 0; hi < 2 && hi < result.landmarks.length; hi++) {
+      const lm = result.landmarks[hi];
+      pts.push(lm[0]);   // Wrist
+      pts.push(lm[8]);   // Index_TIP
+    }
+    // 补齐不足 4 个
+    while (pts.length < 4) pts.push({x:0,y:0,z:0});
+    return pts;
+  } else {
+    // Body: 左肘,右肘,左腕,右腕
+    if (result.landmarks.length > 0) {
+      const lm = result.landmarks[0];
+      return [
+        lm[13] || {x:0,y:0,z:0},  // Left_Elbow
+        lm[14] || {x:0,y:0,z:0},  // Right_Elbow
+        lm[15] || {x:0,y:0,z:0},  // Left_Wrist
+        lm[16] || {x:0,y:0,z:0},  // Right_Wrist
+      ];
+    }
+    return [{x:0,y:0,z:0},{x:0,y:0,z:0},{x:0,y:0,z:0},{x:0,y:0,z:0}];
+  }
+}
+
+function sendWsMotion(result: any) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const pts = extractWsPoints(result);
+  const payload = packMotion(pts);
+  const wire = gatewayProtocol.encode({
+    version: 0x02,
+    pktType: gatewayProtocol.PKT_RAW_MOTION,
+    tgtType: gatewayProtocol.TGT_BROADCAST,
+    roomId: wsRoomEl.value.trim(),
+    userId: wsUserEl.value.trim(),
+    seq: wsSeq++,
+    payload,
+  });
+  ws.send(wire.buffer);
+}
 
 // 双手 / 身体 (从 radio 读取)
 function getMode(): 'hand' | 'pose' {
@@ -268,6 +402,7 @@ function initWorker() {
       framesEl.textContent = `Frames: ${frameCount}`;
       draw(result);
       processFrame(result);
+      sendWsMotion(result);
     }
   };
 }
