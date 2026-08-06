@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hand Landmarker</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; height: 100vh; overflow: hidden; }
+
+    #wrap {
+      position: fixed; inset: 0;
+      display: grid; place-items: center;
+    }
+    video, canvas {
+      grid-area: 1 / 1;
+      width: 100%; height: 100%;
+      object-fit: contain;
+      transform: rotateY(180deg);
+    }
+    canvas { z-index: 2; pointer-events: none; }
+
+    #start {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 0;
+    }
+    #start.hidden { display: none; }
+
+    .start-card {
+      background: rgba(0,0,0,0.7);
+      border-radius: 16px; padding: 24px 32px;
+      display: flex; flex-direction: column;
+      align-items: center; gap: 14px;
+    }
+
+    /* 单选控件 */
+    .mode-radio {
+      display: flex; gap: 0;
+      background: rgba(255,255,255,0.08);
+      border-radius: 12px; overflow: hidden;
+    }
+    .mode-radio label {
+      padding: 9px 22px; font-size: 0.95rem;
+      color: rgba(255,255,255,0.5); cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+      user-select: none;
+    }
+    .mode-radio input { display: none; }
+    .mode-radio input:checked + label {
+      background: #007f8b; color: #fff;
+    }
+
+    #start button {
+      background: #007f8b; color: #fff; border: none;
+      padding: 14px 44px; border-radius: 30px;
+      font-size: 1.15rem; cursor: pointer;
+      font-family: inherit;
+      transition: background 0.2s;
+    }
+    #start button:hover { background: #006069; }
+    #start button:disabled { background: #555; cursor: not-allowed; }
+
+    #stats {
+      position: fixed; bottom: 16px; right: 24px; z-index: 20;
+      font-family: 'Roboto Mono', monospace; font-size: 0.85rem;
+      color: rgba(255,255,255,0.5);
+      display: flex; gap: 18px;
+    }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="output"></canvas>
+  </div>
+  <div id="start">
+    <div class="start-card">
+      <div class="mode-radio" id="mode-radio">
+        <input type="radio" id="r-hand" name="mode" value="hand" checked>
+        <label for="r-hand">✋ Hands</label>
+        <input type="radio" id="r-pose" name="mode" value="pose">
+        <label for="r-pose">🧍 Body</label>
+      </div>
+      <button id="btn">📷 Start Camera</button>
+    </div>
+  </div>
+  <div id="stats">
+    <span id="fps">FPS: -</span>
+    <span id="lat">Latency: -</span>
+    <span id="frames">Frames: 0</span>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

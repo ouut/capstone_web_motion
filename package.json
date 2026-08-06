@@ -1,0 +1,19 @@
+{
+  "name": "hand-landmarker-demo",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "predev": "node copy-wasm.js",
+    "build": "tsc && vite build",
+    "prebuild": "node copy-wasm.js"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^1.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}
