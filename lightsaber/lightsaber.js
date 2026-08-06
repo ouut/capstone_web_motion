@@ -374,51 +374,13 @@ class LightsaberTracker {
   }
 }
 
-// ========== 使用示例 ==========
-
-// 初始化追踪器
-const tracker = new LightsaberTracker({
-  shoulderPos: [0, -0.15, -0.4],
-  armLength: 0.65,
-  handLength: 0.18,
-  imageSize: [640, 480],
-  fov: 60,
-  smoothing: 0.7
-});
-
-// 方式1：手部光剑（手腕+食指）
-function processHandFrame(wristLeft, indexLeft, wristRight, indexRight) {
-  const result = tracker.processHandLightsabers({
-    leftWrist: wristLeft,    // [x, y] 归一化坐标 0-1
-    leftIndex: indexLeft,
-    rightWrist: wristRight,
-    rightIndex: indexRight
-  });
-  
-  console.log('左手光剑位置:', result.left.position);
-  console.log('左手光剑旋转:', result.left.rotation);
-  console.log('右手光剑位置:', result.right.position);
-  console.log('右手光剑旋转:', result.right.rotation);
-  
-  return result;
-}
-
-// 方式2：身体光剑（肘部+手腕）
-function processBodyFrame(elbowLeft, wristLeft, elbowRight, wristRight) {
-  const result = tracker.processBodyLightsabers({
-    leftElbow: elbowLeft,
-    leftWrist: wristLeft,
-    rightElbow: elbowRight,
-    rightWrist: wristRight
-  });
-  
-  console.log('左身体光剑位置:', result.left.position);
-  console.log('右身体光剑位置:', result.right.position);
-  
-  return result;
-}
-
-// ========== 导出 ==========
+// ========== 导出 (Node / AMD / Browser) ==========
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = LightsaberTracker;
+} else if (typeof define === 'function' && define.amd) {
+  define(function () { return LightsaberTracker; });
+} else {
+  // 浏览器全局
+  if (typeof window !== 'undefined') window.LightsaberTracker = LightsaberTracker;
+  if (typeof globalThis !== 'undefined') globalThis.LightsaberTracker = LightsaberTracker;
 }
