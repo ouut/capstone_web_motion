@@ -1,15 +1,17 @@
 import { DrawingUtils, HandLandmarker, PoseLandmarker } from '@mediapipe/tasks-vision';
 
 declare const gatewayProtocol: {
-  PKT_RAW_MOTION: number;
-  PKT_AI_EVENT: number;
-  PKT_SYSTEM_CMD: number;
-  PKT_HEARTBEAT: number;
-  TGT_BROADCAST: number;
-  TGT_UNICAST: number;
-  encode: (o: any) => Uint8Array;
-  decode: (b: Uint8Array|ArrayBuffer) => any;
+  PKT_RAW_MOTION: number; TGT_BROADCAST: number;
+  encode: (o: any) => Uint8Array; decode: (b: Uint8Array|ArrayBuffer) => any;
 };
+
+declare class LightsaberTracker {
+  constructor(config?: { shoulderPos?: number[]; armLength?: number; handLength?: number; imageSize?: number[]; fov?: number; smoothing?: number });
+  processHandLightsabers(lm: { leftWrist: number[]; leftIndex: number[]; rightWrist: number[]; rightIndex: number[] }):
+    { left: { position: number[]; rotation: number[]; direction: number[] }; right: { position: number[]; rotation: number[]; direction: number[] } };
+  processBodyLightsabers(lm: { leftElbow: number[]; leftWrist: number[]; rightElbow: number[]; rightWrist: number[] }):
+    { left: { position: number[]; rotation: number[]; direction: number[] }; right: { position: number[]; rotation: number[]; direction: number[] } };
+}
 
 const video  = document.getElementById('webcam') as HTMLVideoElement;
 const canvas = document.getElementById('output') as HTMLCanvasElement;
@@ -28,6 +30,16 @@ const wsBtnEl  = document.getElementById('ws-btn') as HTMLButtonElement;
 
 let ws: WebSocket | null = null;
 let wsSeq = 0;
+
+// 光剑追踪器 (2D → 3D)
+const lsTracker = new LightsaberTracker({
+  shoulderPos: [0, -0.15, -0.4],
+  armLength: 0.65,
+  handLength: 0.18,
+  imageSize: [640, 480],
+  fov: 60,
+  smoothing: 0.7,
+});
 
 // 正则验证: user ≤ 8 ASCII, room ≤ 6 ASCII, host = domain:port 或 ip:port
 const RE_ASCII = /^[\x21-\x7E]{1,8}$/;   // user
@@ -83,51 +95,67 @@ wsBtnEl.addEventListener('click', () => {
   else wsConnect();
 });
 
-// 打包 12 个 float32 → 48 bytes 的 payload
-function packMotion(pts: {x:number;y:number;z:number}[]): Uint8Array {
+// 打包光剑数据: 每把剑 6个 float32 (剑柄 xyz + 剑尖 xyz), 2把 = 12 = 48 bytes
+function packLightsabers(sabers: {hilt:number[]; tip:number[]}[]): Uint8Array {
   const buf = new ArrayBuffer(48);
   const dv = new DataView(buf);
-  for (let i = 0; i < 4; i++) {
-    const p = pts[i] || { x:0, y:0, z:0 };
-    dv.setFloat32(i*12 + 0, p.x, true);  // little-endian
-    dv.setFloat32(i*12 + 4, p.y, true);
-    dv.setFloat32(i*12 + 8, p.z, true);
+  let off = 0;
+  for (const s of sabers) {
+    dv.setFloat32(off,      s.hilt[0], true); // little-endian
+    dv.setFloat32(off + 4,  s.hilt[1], true);
+    dv.setFloat32(off + 8,  s.hilt[2], true);
+    dv.setFloat32(off + 12, s.tip[0],  true);
+    dv.setFloat32(off + 16, s.tip[1],  true);
+    dv.setFloat32(off + 20, s.tip[2],  true);
+    off += 24;
   }
   return new Uint8Array(buf);
 }
 
-// 从检测结果提取要发送的 4 个点
-function extractWsPoints(result: any): {x:number;y:number;z:number}[] {
+// 从检测结果 + LightsaberTracker 计算光剑 3D 坐标
+function extractLightsabers(result: any): {hilt:number[]; tip:number[]}[] {
+  const zero = { position: [0,0,0] as number[], direction: [0,0,1] as number[] };
+  const handLen = 0.18, forearmLen = 0.29;
+
   if (getMode() === 'hand') {
-    // Hands: 左腕,左食指尖,右腕,右食指尖
-    const pts: {x:number;y:number;z:number}[] = [];
-    for (let hi = 0; hi < 2 && hi < result.landmarks.length; hi++) {
-      const lm = result.landmarks[hi];
-      pts.push(lm[0]);   // Wrist
-      pts.push(lm[8]);   // Index_TIP
-    }
-    // 补齐不足 4 个
-    while (pts.length < 4) pts.push({x:0,y:0,z:0});
-    return pts;
+    // Hands: Wrist(0) → Index_TIP(8)
+    const lm0 = result.landmarks?.[0];
+    const lm1 = result.landmarks?.[1];
+    const pts: any = {
+      leftWrist: lm0 ? [lm0[0].x, lm0[0].y] : [0,0],
+      leftIndex: lm0 ? [lm0[8].x, lm0[8].y] : [0,0],
+      rightWrist: lm1 ? [lm1[0].x, lm1[0].y] : [0,0],
+      rightIndex: lm1 ? [lm1[8].x, lm1[8].y] : [0,0],
+    };
+    const ls = lsTracker.processHandLightsabers(pts);
+    return [
+      { hilt: ls.left.position,  tip: vecAdd(ls.left.position, vecMul(ls.left.direction, handLen)) },
+      { hilt: ls.right.position, tip: vecAdd(ls.right.position, vecMul(ls.right.direction, handLen)) },
+    ];
   } else {
-    // Body: 左肘,右肘,左腕,右腕
-    if (result.landmarks.length > 0) {
-      const lm = result.landmarks[0];
-      return [
-        lm[13] || {x:0,y:0,z:0},  // Left_Elbow
-        lm[14] || {x:0,y:0,z:0},  // Right_Elbow
-        lm[15] || {x:0,y:0,z:0},  // Left_Wrist
-        lm[16] || {x:0,y:0,z:0},  // Right_Wrist
-      ];
-    }
-    return [{x:0,y:0,z:0},{x:0,y:0,z:0},{x:0,y:0,z:0},{x:0,y:0,z:0}];
+    // Body: Elbow(13) → Wrist(15), L/R
+    const lm0 = result.landmarks?.[0];
+    const pts: any = {
+      leftElbow:  lm0 ? [lm0[13].x, lm0[13].y] : [0,0],
+      leftWrist:  lm0 ? [lm0[15].x, lm0[15].y] : [0,0],
+      rightElbow: lm0 ? [lm0[14].x, lm0[14].y] : [0,0],
+      rightWrist: lm0 ? [lm0[16].x, lm0[16].y] : [0,0],
+    };
+    const ls = lsTracker.processBodyLightsabers(pts);
+    return [
+      { hilt: ls.left.position,  tip: vecAdd(ls.left.position, vecMul(ls.left.direction, forearmLen)) },
+      { hilt: ls.right.position, tip: vecAdd(ls.right.position, vecMul(ls.right.direction, forearmLen)) },
+    ];
   }
 }
 
+function vecAdd(a: number[], b: number[]): number[] { return [a[0]+b[0], a[1]+b[1], a[2]+b[2]]; }
+function vecMul(a: number[], s: number): number[] { return [a[0]*s, a[1]*s, a[2]*s]; }
+
 function sendWsMotion(result: any) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  const pts = extractWsPoints(result);
-  const payload = packMotion(pts);
+  const sabers = extractLightsabers(result);
+  const payload = packLightsabers(sabers);
   const wire = gatewayProtocol.encode({
     version: 0x02,
     pktType: gatewayProtocol.PKT_RAW_MOTION,
@@ -441,6 +469,8 @@ async function startCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
   video.srcObject = stream;
   await video.play();
+  await new Promise<void>(r => { if (video.videoWidth) r(); else video.addEventListener('loadedmetadata', () => r(), { once: true }); });
+  (lsTracker as any).imageSize = [video.videoWidth, video.videoHeight];
   startDiv.classList.add('hidden');
   running = true;
   requestAnimationFrame(loop);
