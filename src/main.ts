@@ -18,14 +18,11 @@ function getMode(): 'hand' | 'pose' {
 }
 
 // 两个 Worker URL (Vite 要求静态路径)
-const handWorkerUrl = new URL('./workers/hand-landmarker.worker.ts', import.meta.url);
-const poseWorkerUrl = new URL('./workers/pose-landmarker.worker.ts', import.meta.url);
+import HandWorker from './workers/hand-landmarker.worker.ts?worker';
+import PoseWorker from './workers/pose-landmarker.worker.ts?worker';
 
 function createWorker(): Worker {
-  return new Worker(
-    getMode() === 'hand' ? handWorkerUrl : poseWorkerUrl,
-    { type: 'module' }
-  );
+  return getMode() === 'hand' ? new HandWorker() : new PoseWorker();
 }
 
 let worker: Worker;
@@ -46,7 +43,6 @@ let fpsLastTime = performance.now();
 // WebSocket
 // ══════════════════════════════════════════════════════════
 
-const wsUserEl = document.getElementById('ws-user') as HTMLInputElement;
 const wsRoomEl = document.getElementById('ws-room') as HTMLInputElement;
 const wsHostEl = document.getElementById('ws-host') as HTMLInputElement;
 const wsBtnEl  = document.getElementById('ws-btn') as HTMLButtonElement;
@@ -54,16 +50,20 @@ const wsBtnEl  = document.getElementById('ws-btn') as HTMLButtonElement;
 let ws: WebSocket | null = null;
 let wsSeq = 0;
 
-// 正则验证: user ≤ 8 ASCII, room ≤ 6 ASCII, host = domain:port 或 ip:port
-const RE_ASCII = /^[\x21-\x7E]{1,8}$/;
-const RE_ROOM  = /^[\x21-\x7E]{1,6}$/;
-const RE_HOST  = /^[\w.-]+:\d{2,5}$/;
+// userId: 时间戳低24位(6 hex) + 随机8位(2 hex) = 固定8字符，永不溢出
+const userId = (() => {
+  const ts = Date.now() & 0xFFFFFF;        // 低24位, 0~16.7M
+  const rnd = (Math.random() * 0x100) | 0; // 8位, 0~255
+  return ts.toString(16).padStart(6, '0') + rnd.toString(16).padStart(2, '0');
+})();
+
+// 正则验证: room ≤ 6 ASCII, host = domain:port 或 ip:port
+const RE_ROOM = /^[\x21-\x7E]{1,6}$/;
+const RE_HOST = /^[\w.-]+:\d{2,5}$/;
 
 function validateWsInputs(): string | null {
-  const u = wsUserEl.value.trim();
   const r = wsRoomEl.value.trim();
   const h = wsHostEl.value.trim();
-  if (!u || !RE_ASCII.test(u)) return 'User: 1-8 ASCII chars required';
   if (!r || !RE_ROOM.test(r)) return 'Room: 1-6 ASCII chars required';
   if (!h || !RE_HOST.test(h)) return 'Host: e.g. 192.168.1.1:8080 or example.com:8080';
   return null;
@@ -75,11 +75,10 @@ function wsConnect() {
   const err = validateWsInputs();
   if (err) { alert(err); return; }
 
-  const u = wsUserEl.value.trim();
   const r = wsRoomEl.value.trim();
   const h = wsHostEl.value.trim();
 
-  const url = `ws://${h}/ws?room=${encodeURIComponent(r)}&user=${encodeURIComponent(u)}`;
+  const url = `ws://${h}/ws?room=${encodeURIComponent(r)}&user=${encodeURIComponent(userId)}`;
 
   try {
     ws = new WebSocket(url);
@@ -151,7 +150,7 @@ function sendWsMotion(result: any) {
     pktType: gatewayProtocol.PKT_RAW_MOTION,
     tgtType: gatewayProtocol.TGT_BROADCAST,
     roomId: wsRoomEl.value.trim(),
-    userId: wsUserEl.value.trim(),
+    userId: userId,
     seq: wsSeq++,
     payload: packLandmarks(pts),
   });

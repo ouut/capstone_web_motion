@@ -7,7 +7,8 @@
     "dev": "vite",
     "predev": "node copy-wasm.js",
     "build": "tsc && vite build",
-    "prebuild": "node copy-wasm.js"
+    "prebuild": "node copy-wasm.js",
+    "deploy": "npm run build && rm -rf ../webClient && cp -r dist ../webClient"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^1.0.1"
