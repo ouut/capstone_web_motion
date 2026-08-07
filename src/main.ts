@@ -78,7 +78,8 @@ function wsConnect() {
   const r = wsRoomEl.value.trim();
   const h = wsHostEl.value.trim();
 
-  const url = `ws://${h}/ws?room=${encodeURIComponent(r)}&user=${encodeURIComponent(userId)}`;
+  const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  const url = `${protocol}${h}/ws?room=${encodeURIComponent(r)}&user=${encodeURIComponent(userId)}`;
 
   try {
     ws = new WebSocket(url);
