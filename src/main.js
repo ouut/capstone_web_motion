@@ -109,8 +109,7 @@ function packLandmarks(pts) {
     return new Uint8Array(buf);
 }
 function extractLandmarks(result) {
-    // 前置摄像头：x 翻转 (canvas 由 CSS rotateY 处理，这里只翻转 WebSocket 数据)
-    const fx = (v) => 1 - v;
+    const fx = (v) => v;
     if (getMode() === 'hand') {
         const lm0 = result.landmarks?.[0];
         const lm1 = result.landmarks?.[1];
@@ -141,7 +140,7 @@ function packBodyCOCO12(lm) {
     let off = 2;
     for (let i = 0; i < 12; i++) {
         const j = lm?.[COCO12_MP_IDX[i]];
-        dv.setFloat32(off, 1 - (j?.x ?? 0), true); // x (flip for front camera)
+        dv.setFloat32(off, j?.x ?? 0, true);
         dv.setFloat32(off + 4, j?.y ?? 0, true);
         dv.setFloat32(off + 8, j?.z ?? 0, true);
         off += 12;
