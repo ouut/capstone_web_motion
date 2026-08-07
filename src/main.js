@@ -41,16 +41,16 @@ const userId = (() => {
     const rnd = (Math.random() * 0x100) | 0; // 8位, 0~255
     return ts.toString(16).padStart(6, '0') + rnd.toString(16).padStart(2, '0');
 })();
-// 正则验证: room ≤ 6 ASCII, host = domain:port 或 ip:port
+// 正则验证: room ≤ 6 ASCII, host = ws[s]://domain[:port]
 const RE_ROOM = /^[\x21-\x7E]{1,6}$/;
-const RE_HOST = /^[\w.-]+:\d{2,5}$/;
+const RE_HOST = /^wss?:\/\/[\w.-]+(:\d{2,5})?$/;
 function validateWsInputs() {
     const r = wsRoomEl.value.trim();
     const h = wsHostEl.value.trim();
     if (!r || !RE_ROOM.test(r))
         return 'Room: 1-6 ASCII chars required';
     if (!h || !RE_HOST.test(h))
-        return 'Host: e.g. 192.168.1.1:8080 or example.com:8080';
+        return 'Host: ws://localhost:8080 or wss://example.com';
     return null;
 }
 function wsConnect() {
@@ -65,8 +65,7 @@ function wsConnect() {
     }
     const r = wsRoomEl.value.trim();
     const h = wsHostEl.value.trim();
-    const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const url = `${protocol}${h}/ws?room=${encodeURIComponent(r)}&user=${encodeURIComponent(userId)}`;
+    const url = `${h}/ws?room=${encodeURIComponent(r)}&user=${encodeURIComponent(userId)}`;
     try {
         ws = new WebSocket(url);
         ws.binaryType = 'arraybuffer';
