@@ -89,7 +89,7 @@ function wsConnect() {
       const mode = getMode();
       console.log(`%c\u{1F517} WS connected %c${url}`,
         'color:#22c55e;font-weight:bold', 'color:#94a3b8');
-      console.log(`   Mode: ${mode} | 4 points (x,y 2D) | Payload: 33 bytes`);
+      console.log(`   Mode: ${mode} | hand=33B body=146B COCO12`);
     };
     ws.onclose = () => {
       wsBtnEl.textContent = '\u{1F517}';
@@ -143,10 +143,36 @@ function extractLandmarks(result: any): number[] {
   }
 }
 
+// ── COCO12 全身 12 关节 (body mode): 1B mode + 1B count + 12×(x,y,z) float32 LE = 146B ──
+const COCO12_MP_IDX = [11,12,13,14,15,16,23,24,25,26,27,28];
+function packBodyCOCO12(lm: any): Uint8Array {
+  const buf = new ArrayBuffer(2 + 12 * 12);
+  const dv = new DataView(buf);
+  dv.setUint8(0, 0x02);
+  dv.setUint8(1, 12);
+  let off = 2;
+  for (let i = 0; i < 12; i++) {
+    const j = lm?.[COCO12_MP_IDX[i]];
+    dv.setFloat32(off,      1 - (j?.x ?? 0), true);  // x (flip for front camera)
+    dv.setFloat32(off + 4,  j?.y ?? 0, true);
+    dv.setFloat32(off + 8,  j?.z ?? 0, true);
+    off += 12;
+  }
+  return new Uint8Array(buf);
+}
+
 let lastWsLog = 0;
 function sendWsMotion(result: any) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  const pts = extractLandmarks(result);
+
+  let payload: Uint8Array;
+  if (getMode() === 'hand') {
+    const pts = extractLandmarks(result) as number[];
+    payload = packLandmarks(pts);
+  } else {
+    payload = packBodyCOCO12(result.landmarks?.[0]);
+  }
+
   const wire = gatewayProtocol.encode({
     version: 0x02,
     pktType: gatewayProtocol.PKT_RAW_MOTION,
@@ -154,22 +180,19 @@ function sendWsMotion(result: any) {
     roomId: wsRoomEl.value.trim(),
     userId: userId,
     seq: wsSeq++,
-    payload: packLandmarks(pts),
+    payload: payload,
   });
   ws.send(wire.buffer);
 
   if (frameCount - lastWsLog >= 30) {
     lastWsLog = frameCount;
-    const mode = getMode() === 'hand' ? 'Hands' : 'Body';
-    const labels = mode === 'Hands'
-      ? ['L_Wrist','L_Index','R_Wrist','R_Index']
-      : ['L_Elbow','L_Wrist','R_Elbow','R_Wrist'];
-    console.log(`%c\u{1F4E1} WS #${wsSeq} %c${mode} %c| 57B`,
-      'color:#fbbf24;font-weight:bold', 'color:#94a3b8', 'color:#64748b');
-    for (let i = 0; i < 4; i++) {
-      const x = pts[i*2], y = pts[i*2+1];
-      if (x !== 0 || y !== 0) console.log(`  ${labels[i]}: (${x.toFixed(4)}, ${y.toFixed(4)})`);
-      else console.log(`  ${labels[i]}: %c(empty)`, 'color:#666');
+    if (getMode() === 'hand') {
+      const pts = extractLandmarks(result) as number[];
+      console.log(`%c\u{1F4E1} WS #${wsSeq} %cHands %c| 57B`,
+        'color:#fbbf24;font-weight:bold', 'color:#94a3b8', 'color:#64748b');
+    } else {
+      console.log(`%c\u{1F4E1} WS #${wsSeq} %cBody COCO12 %c| 170B %c12joints`,
+        'color:#fbbf24;font-weight:bold', 'color:#22c55e', 'color:#64748b', 'color:#22c55e');
     }
   }
 }
