@@ -109,23 +109,25 @@ function packLandmarks(pts) {
     return new Uint8Array(buf);
 }
 function extractLandmarks(result) {
+    // 前置摄像头：x 翻转 (canvas 由 CSS rotateY 处理，这里只翻转 WebSocket 数据)
+    const fx = (v) => 1 - v;
     if (getMode() === 'hand') {
         const lm0 = result.landmarks?.[0];
         const lm1 = result.landmarks?.[1];
         return [
-            lm0?.[0]?.x ?? 0, lm0?.[0]?.y ?? 0, // Left Wrist
-            lm0?.[8]?.x ?? 0, lm0?.[8]?.y ?? 0, // Left Index_TIP
-            lm1?.[0]?.x ?? 0, lm1?.[0]?.y ?? 0, // Right Wrist
-            lm1?.[8]?.x ?? 0, lm1?.[8]?.y ?? 0, // Right Index_TIP
+            fx(lm0?.[0]?.x ?? 0), lm0?.[0]?.y ?? 0, // Left Wrist
+            fx(lm0?.[8]?.x ?? 0), lm0?.[8]?.y ?? 0, // Left Index_TIP
+            fx(lm1?.[0]?.x ?? 0), lm1?.[0]?.y ?? 0, // Right Wrist
+            fx(lm1?.[8]?.x ?? 0), lm1?.[8]?.y ?? 0, // Right Index_TIP
         ];
     }
     else {
         const lm0 = result.landmarks?.[0];
         return [
-            lm0?.[13]?.x ?? 0, lm0?.[13]?.y ?? 0, // Left Elbow
-            lm0?.[15]?.x ?? 0, lm0?.[15]?.y ?? 0, // Left Wrist
-            lm0?.[14]?.x ?? 0, lm0?.[14]?.y ?? 0, // Right Elbow
-            lm0?.[16]?.x ?? 0, lm0?.[16]?.y ?? 0, // Right Wrist
+            fx(lm0?.[13]?.x ?? 0), lm0?.[13]?.y ?? 0, // Left Elbow
+            fx(lm0?.[15]?.x ?? 0), lm0?.[15]?.y ?? 0, // Left Wrist
+            fx(lm0?.[14]?.x ?? 0), lm0?.[14]?.y ?? 0, // Right Elbow
+            fx(lm0?.[16]?.x ?? 0), lm0?.[16]?.y ?? 0, // Right Wrist
         ];
     }
 }
